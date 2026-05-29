@@ -224,11 +224,12 @@ def render_references(root):
 
 
 def main():
-    if len(sys.argv) != 3:
-        print(f"usage: {sys.argv[0]} input.xml output.md", file=sys.stderr)
+    if len(sys.argv) not in (3, 4):
+        print(f"usage: {sys.argv[0]} input.xml output.md [preamble.md]", file=sys.stderr)
         return 2
 
-    xml_path, md_path = sys.argv[1:]
+    xml_path, md_path = sys.argv[1:3]
+    preamble_path = sys.argv[3] if len(sys.argv) == 4 else None
     root = ET.parse(xml_path).getroot()
     front = root.find("front")
     title = inline(front.find("title")) if front is not None else root.attrib.get("docName")
@@ -250,6 +251,10 @@ def main():
     blocks.extend(render_references(root))
 
     output = "\n\n".join(block for block in blocks if block).rstrip() + "\n"
+    if preamble_path:
+        with open(preamble_path, encoding="utf-8") as handle:
+            preamble = handle.read().rstrip()
+        output = f"{preamble}\n\n{output}"
     with open(md_path, "w", encoding="utf-8") as handle:
         handle.write(output)
     return 0
