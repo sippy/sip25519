@@ -781,14 +781,33 @@ The `MD5` algorithm **MUST NOT** be used with this mechanism.
 
 ## Normative References
 
-- [RFC2104](https://www.rfc-editor.org/info/rfc2104)
-- [RFC2119](https://www.rfc-editor.org/info/rfc2119)
-- [RFC3261](https://www.rfc-editor.org/info/rfc3261)
-- [RFC4648](https://www.rfc-editor.org/info/rfc4648)
-- [RFC5234](https://www.rfc-editor.org/info/rfc5234)
-- [RFC5869](https://www.rfc-editor.org/info/rfc5869)
-- [RFC6234](https://www.rfc-editor.org/info/rfc6234)
-- [RFC7748](https://www.rfc-editor.org/info/rfc7748)
-- [RFC8174](https://www.rfc-editor.org/info/rfc8174)
-- [RFC8760](https://www.rfc-editor.org/info/rfc8760)
-- [RFC9496](https://www.rfc-editor.org/info/rfc9496)
+- **[RFC2104]** H. Krawczyk, M. Bellare, and R. Canetti, "HMAC: Keyed-Hashing for
+  Message Authentication", RFC 2104, DOI 10.17487/RFC2104, February 1997,
+  <https://www.rfc-editor.org/info/rfc2104>.
+- **[RFC2119]** S. Bradner, "Key words for use in RFCs to Indicate Requirement Levels",
+  RFC 2119, DOI 10.17487/RFC2119, March 1997, <https://www.rfc-editor.org/info/rfc2119>.
+- **[RFC3261]** J. Rosenberg, H. Schulzrinne, G. Camarillo, A. Johnston, J. Peterson, R.
+  Sparks, M. Handley, and E. Schooler, "SIP: Session Initiation Protocol", RFC 3261, DOI
+  10.17487/RFC3261, July 2002, <https://www.rfc-editor.org/info/rfc3261>.
+- **[RFC4648]** S. Josefsson, "The Base16, Base32, and Base64 Data Encodings", RFC 4648,
+  DOI 10.17487/RFC4648, October 2006, <https://www.rfc-editor.org/info/rfc4648>.
+- **[RFC5234]** D. Crocker and P. Overell, "Augmented BNF for Syntax Specifications:
+  ABNF", RFC 5234, DOI 10.17487/RFC5234, January 2008,
+  <https://www.rfc-editor.org/info/rfc5234>.
+- **[RFC5869]** H. Krawczyk and P. Eronen, "HMAC-based Extract-and-Expand Key Derivation
+  Function (HKDF)", RFC 5869, DOI 10.17487/RFC5869, May 2010,
+  <https://www.rfc-editor.org/info/rfc5869>.
+- **[RFC6234]** D. Eastlake 3rd and T. Hansen, "US Secure Hash Algorithms (SHA and
+  SHA-based HMAC and HKDF)", RFC 6234, DOI 10.17487/RFC6234, May 2011,
+  <https://www.rfc-editor.org/info/rfc6234>.
+- **[RFC7748]** A. Langley, M. Hamburg, and S. Turner, "Elliptic Curves for Security",
+  RFC 7748, DOI 10.17487/RFC7748, January 2016,
+  <https://www.rfc-editor.org/info/rfc7748>.
+- **[RFC8174]** B. Leiba, "Ambiguity of Uppercase vs Lowercase in RFC 2119 Key Words",
+  RFC 8174, DOI 10.17487/RFC8174, May 2017, <https://www.rfc-editor.org/info/rfc8174>.
+- **[RFC8760]** R. Shekh-Yusef, "The Session Initiation Protocol (SIP) Digest Access
+  Authentication Scheme", RFC 8760, DOI 10.17487/RFC8760, March 2020,
+  <https://www.rfc-editor.org/info/rfc8760>.
+- **[RFC9496]** H. de Valence, J. Grigg, M. Hamburg, I. Lovecruft, G. Tankersley, and F.
+  Valsorda, "The ristretto255 and decaf448 Groups", RFC 9496, DOI 10.17487/RFC9496,
+  December 2023, <https://www.rfc-editor.org/info/rfc9496>.
