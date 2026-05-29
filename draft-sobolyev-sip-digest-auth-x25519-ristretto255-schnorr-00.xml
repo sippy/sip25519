@@ -1,0 +1,909 @@
+<?xml version="1.0" encoding="US-ASCII"?>
+<?xml-model href="rfc7991bis.rnc"?>
+<rfc xmlns:xi="http://www.w3.org/2001/XInclude"
+     version="3"
+     category="std"
+     consensus="true"
+     docName="draft-sobolyev-sip-digest-auth-x25519-ristretto255-schnorr-00"
+     ipr="trust200902"
+     submissionType="IETF">
+  <front>
+    <title abbrev="SIP Digest Public-Key Authentication">SIP Digest Authentication with X25519 Shared Secrets and Ristretto255 Schnorr Proofs</title>
+    <seriesInfo name="Internet-Draft" value="draft-sobolyev-sip-digest-auth-x25519-ristretto255-schnorr-00"/>
+    <author fullname="Maksym Sobolyev" initials="M." surname="Sobolyev">
+      <organization>Sippy Software, Inc.</organization>
+      <address>
+        <email>sobomax@sippysoft.com</email>
+      </address>
+    </author>
+    <date year="2026" month="May" day="29"/>
+    <area>ART</area>
+    <workgroup>Internet Engineering Task Force</workgroup>
+    <keyword>SIP</keyword>
+    <keyword>Digest</keyword>
+    <keyword>X25519</keyword>
+    <keyword>Ristretto255</keyword>
+    <keyword>Schnorr</keyword>
+    <abstract>
+      <t>This document defines three Session Initiation Protocol
+      (SIP) Digest authentication algorithms that replace password-derived
+      Digest secrets with public-key-based authentication material.  Two
+      algorithms derive a response secret from an X25519 shared secret, and
+      one algorithm uses a Fiat-Shamir Schnorr proof over the ristretto255
+      group.</t>
+      <t>The mechanisms defined here preserve the existing SIP Digest
+      challenge and authorization header flow while adding Digest parameters
+      that carry public keys and, optionally, an authenticated server challenge
+      proof.</t>
+    </abstract>
+  </front>
+
+  <middle>
+    <section anchor="intro" numbered="true" toc="default">
+      <name>Introduction</name>
+      <t>This document defines the following SIP Digest
+      authentication algorithm tokens:</t>
+      <ul>
+        <li><tt>X25519-HKDF-SHA256</tt></li>
+        <li><tt>X25519-HMAC-SHA256</tt></li>
+        <li><tt>R25519-SCHNORR-SHA256</tt></li>
+      </ul>
+      <t>The algorithms are intended for deployments where the User Agent
+      Client (UAC) and User Agent Server (UAS), or a proxy acting as the
+      authenticating server, have pre-provisioned trust in each other's public
+      keys.  They do not define certificate discovery, enrollment, or
+      authorization policy.</t>
+      <t>The X25519 algorithms derive authentication material from the shared
+      secret computed by <xref target="RFC7748"/> X25519.  The ristretto255
+      algorithm uses a Schnorr-style non-interactive proof over the group
+      defined by <xref target="RFC9496"/>.</t>
+      <t><tt>X25519-HKDF-SHA256</tt> and <tt>X25519-HMAC-SHA256</tt> preserve
+      the original SIP Digest flow: the UAS sends a challenge and the UAC sends
+      an authorization response after validating the challenged server public
+      key against local policy.  <tt>R25519-SCHNORR-SHA256</tt> adds a new
+      capability: the UAC can request that the UAS pre-authenticate the
+      challenge using <tt>server-response</tt> before the UAC generates its own
+      proof.  This prevents an unauthenticated man-in-the-middle attacker from
+      causing the UAC to perform private-key operations for attacker-generated
+      challenges, reducing exposure to private-key extraction attempts that rely
+      on side channels or fault behavior during proof generation.</t>
+      <t>The existing SIP Digest parameters, including <tt>realm</tt>,
+      <tt>username</tt>, <tt>nonce</tt>, <tt>uri</tt>, <tt>qop</tt>,
+      <tt>nc</tt>, <tt>cnonce</tt>, and <tt>response</tt>, retain their
+      existing Digest roles.  This document defines four new Digest
+      parameters: <tt>server-pubkey</tt>, <tt>client-pubkey</tt>,
+      <tt>client-challenge</tt>, and <tt>server-response</tt>.</t>
+    </section>
+
+    <section anchor="motivation" numbered="true" toc="default">
+      <name>Motivation</name>
+      <t>Traditional SIP Digest authentication is based on a
+      <tt>username</tt> and a shared password or password-equivalent secret.
+      This model is well suited to human subscriber authentication and legacy
+      provisioning systems, but it is a poor fit for many machine-to-machine
+      SIP deployments.</t>
+      <t>Machine-to-machine SIP authentication is often performed between
+      systems, services, trunks, gateways, proxies, application servers, Session
+      Border Controllers (SBCs), and other automated endpoints.  These entities
+      do not always naturally correspond to human usernames and passwords.
+      Password-based provisioning also creates operational issues: shared
+      secrets must be generated, distributed, rotated, stored, and protected by
+      both sides.  A compromise of the verifier-side secret database can expose
+      password-equivalent material that can be used for impersonation.</t>
+      <t>Public-key authentication is often a better fit for these environments.
+      Each endpoint can be provisioned with a private key and a corresponding
+      trusted public key.  The private key does not need to be shared with the
+      peer, and the public key can be distributed through configuration,
+      inventory, orchestration, certificates, or another trust-management
+      system.</t>
+      <t>The goal of these mechanisms is to support deployments where
+      authorization is tied to possession of a configured private key rather
+      than knowledge of a shared password, while preserving SIP Digest
+      processing.  This model also supports deployments where a request is not
+      accepted merely because it arrives from a particular network, IP address,
+      interface, trunk, or transport path.  Instead, the receiver verifies
+      cryptographic proof that the sender possesses the private key
+      corresponding to a trusted public key, and then applies local
+      authorization policy for that key, realm, endpoint, account, route, or
+      service.</t>
+      <t>SIP over TLS can provide transport confidentiality, transport
+      integrity, and transport-layer peer authentication.  However, TLS
+      authentication is tied to the transport connection and does not by itself
+      define SIP Digest identities, Digest <tt>realm</tt> scoping, SIP
+      authorization policy, or authentication of individual SIP requests and
+      entity bodies through the Digest <tt>qop</tt> model.  The mechanisms in
+      this document are therefore complementary to TLS rather than replacements
+      for it.</t>
+    </section>
+
+    <section anchor="conventions" numbered="true" toc="default">
+      <name>Conventions and Terminology</name>
+      <t>The key words <bcp14>MUST</bcp14>, <bcp14>MUST NOT</bcp14>,
+      <bcp14>REQUIRED</bcp14>, <bcp14>SHALL</bcp14>, <bcp14>SHALL NOT</bcp14>,
+      <bcp14>SHOULD</bcp14>, <bcp14>SHOULD NOT</bcp14>,
+      <bcp14>RECOMMENDED</bcp14>, <bcp14>NOT RECOMMENDED</bcp14>,
+      <bcp14>MAY</bcp14>, and <bcp14>OPTIONAL</bcp14> in this document are to
+      be interpreted as described in BCP 14 <xref target="RFC2119"/>
+      <xref target="RFC8174"/> when, and only when, they appear in all
+      capitals, as shown here.</t>
+      <dl>
+        <dt>UAC</dt>
+        <dd>SIP User Agent Client.</dd>
+        <dt>UAS</dt>
+        <dd>SIP User Agent Server.</dd>
+        <dt>X25519 public key</dt>
+        <dd>A 32-octet raw X25519 public key as specified by
+        <xref target="RFC7748"/>.</dd>
+        <dt>ristretto255 public key</dt>
+        <dd>A 32-octet compressed ristretto255 group element as specified by
+        <xref target="RFC9496"/>.</dd>
+        <dt>base64url</dt>
+        <dd>Base64url encoding without padding, using the URL and filename safe
+        alphabet from <xref target="RFC4648"/> Section 5.</dd>
+        <dt>digest-uri</dt>
+        <dd>The value of the Digest <tt>uri</tt> parameter.</dd>
+        <dt>entity-body</dt>
+        <dd>The SIP message body used for the <tt>qop=auth-int</tt>
+        calculation.</dd>
+        <dt>SHA-256</dt>
+        <dd>The SHA-256 hash function specified by <xref target="RFC6234"/>.</dd>
+      </dl>
+    </section>
+
+    <section anchor="syntax" numbered="true" toc="default">
+      <name>Digest Parameters and Syntax</name>
+      <t>The parameters in this section extend the Digest
+      <tt>auth-param</tt> syntax used by SIP Digest authentication
+      <xref target="RFC3261"/> <xref target="RFC8760"/>.  Unless otherwise
+      stated, each value is carried as a quoted string containing an unpadded
+      base64url value.</t>
+      <sourcecode type="abnf"><![CDATA[
+base64url-char     = ALPHA / DIGIT / "-" / "_"
+base64url-value    = 1*base64url-char
+b64q               = DQUOTE base64url-value DQUOTE
+
+server-pubkey      = "server-pubkey" EQUAL b64q
+client-pubkey      = "client-pubkey" EQUAL b64q
+client-challenge   = "client-challenge" EQUAL b64q
+server-response    = "server-response" EQUAL b64q
+]]></sourcecode>
+      <t><tt>ALPHA</tt>, <tt>DIGIT</tt>, and <tt>DQUOTE</tt> are defined by
+      <xref target="RFC5234"/>.  <tt>EQUAL</tt> is inherited from the SIP
+      grammar in <xref target="RFC3261"/>.</t>
+
+      <section anchor="server-pubkey" numbered="true" toc="default">
+        <name>server-pubkey</name>
+        <t>The <tt>server-pubkey</tt> parameter is sent by the UAS in
+        <tt>WWW-Authenticate</tt>, or by a proxy in
+        <tt>Proxy-Authenticate</tt>.</t>
+        <t>For <tt>X25519-HKDF-SHA256</tt> and
+        <tt>X25519-HMAC-SHA256</tt>, it contains the raw 32-octet X25519 public
+        key of the authenticating server.  For
+        <tt>R25519-SCHNORR-SHA256</tt>, it contains the 32-octet ristretto255
+        public key of the authenticating server.</t>
+        <t>A UAC receiving this parameter <bcp14>MUST</bcp14> verify that the
+        decoded public key is trusted for the challenged SIP realm, peer, route,
+        outbound proxy, or configured authentication domain before generating an
+        authorization response.</t>
+      </section>
+
+      <section anchor="client-pubkey" numbered="true" toc="default">
+        <name>client-pubkey</name>
+        <t>The <tt>client-pubkey</tt> parameter is sent by the UAC in
+        <tt>Authorization</tt> or <tt>Proxy-Authorization</tt>.</t>
+        <t>For <tt>X25519-HKDF-SHA256</tt> and
+        <tt>X25519-HMAC-SHA256</tt>, it contains the raw 32-octet X25519 public
+        key of the authenticating client.  For
+        <tt>R25519-SCHNORR-SHA256</tt>, it contains the 32-octet ristretto255
+        public key whose corresponding private scalar is proven by the UAC.</t>
+        <t>A UAS receiving this parameter <bcp14>MUST</bcp14> verify that the
+        decoded public key is trusted for the claimed <tt>username</tt>, if
+        present, and <tt>realm</tt>.  If <tt>username</tt> is absent, the UAS
+        <bcp14>MUST</bcp14> verify that <tt>client-pubkey</tt> is trusted for
+        the <tt>realm</tt> and for the applicable account, subscriber,
+        endpoint, authorization identity, or other local authorization
+        record.</t>
+      </section>
+
+      <section anchor="client-challenge" numbered="true" toc="default">
+        <name>client-challenge</name>
+        <t>The <tt>client-challenge</tt> parameter is sent by the UAC in an
+        initial <tt>Authorization</tt> or <tt>Proxy-Authorization</tt> header
+        when requesting an authenticated server challenge.  It contains at least
+        128 bits of client-generated randomness.</t>
+        <t>The parameter is used by <tt>R25519-SCHNORR-SHA256</tt> to allow the
+        UAS to prove possession of the private scalar corresponding to
+        <tt>server-pubkey</tt> in the 401 or 407 challenge response.  The UAS
+        <bcp14>MUST NOT</bcp14> echo <tt>client-challenge</tt> in
+        <tt>WWW-Authenticate</tt> or <tt>Proxy-Authenticate</tt>.</t>
+        <t>The UAC <bcp14>MUST</bcp14> verify <tt>server-response</tt> using
+        the locally remembered <tt>client-challenge</tt> value that it generated
+        and sent.  The UAC <bcp14>MUST NOT</bcp14> use any reflected or received
+        <tt>client-challenge</tt> value from a response header when verifying
+        <tt>server-response</tt>.</t>
+      </section>
+
+      <section anchor="server-response" numbered="true" toc="default">
+        <name>server-response</name>
+        <t>The <tt>server-response</tt> parameter is sent by the UAS in
+        <tt>WWW-Authenticate</tt>, or by a proxy in
+        <tt>Proxy-Authenticate</tt>, when responding to a request that contained
+        <tt>client-challenge</tt>.</t>
+        <t>The value is <tt>base64url(R || s)</tt>, where <tt>R</tt> is a
+        compressed ristretto255 commitment of 32 octets and <tt>s</tt> is a
+        canonical scalar modulo the ristretto255 group order, encoded as 32
+        octets.  The decoded value is therefore exactly 64 octets.</t>
+      </section>
+    </section>
+
+    <section anchor="encoding" numbered="true" toc="default">
+      <name>Transcript Encoding</name>
+      <t>All cryptographic transcripts defined by this document use the
+      following deterministic encoding to avoid ambiguity between adjacent SIP
+      and Digest fields.</t>
+      <t><tt>Transcript(label, field-list)</tt> is the octet string formed by
+      concatenating the US-ASCII <tt>label</tt>, a line feed
+      (<tt>%x0A</tt>), and then, for each field in order:</t>
+      <ol>
+        <li>the US-ASCII field name,</li>
+        <li>a colon (<tt>%x3A</tt>),</li>
+        <li>the decimal octet length of the field value encoded in US-ASCII
+        without leading zeroes,</li>
+        <li>another colon,</li>
+        <li>the field value octets, and</li>
+        <li>a line feed.</li>
+      </ol>
+      <t>Unless otherwise stated, SIP and Digest string fields are encoded
+      exactly as their field values appear after Digest quoted-string
+      unescaping.  Binary fields, including public keys, shared secrets,
+      commitments, scalars, and hash outputs, are encoded as their raw octets
+      when they are transcript fields.  The final line feed is part of the
+      transcript.</t>
+      <t>For <tt>qop=auth</tt>, the <tt>body-hash</tt> transcript field is the
+      zero-length value.  For <tt>qop=auth-int</tt>, it is the raw 32-octet
+      SHA-256 digest of the entity body.</t>
+    </section>
+
+    <section anchor="common" numbered="true" toc="default">
+      <name>Common Digest Fields</name>
+      <t>The Digest fields <tt>realm</tt>, <tt>username</tt>, <tt>nonce</tt>,
+      <tt>uri</tt>, <tt>qop</tt>, <tt>nc</tt>, <tt>cnonce</tt>, and
+      <tt>response</tt> retain their usual meanings in SIP Digest
+      authentication, except as explicitly stated in this section.  For all
+      algorithms in this document, <tt>realm</tt> is <bcp14>REQUIRED</bcp14>
+      and <tt>qop=auth</tt> and <tt>qop=auth-int</tt> are supported.</t>
+      <t>For the algorithms defined by this document, <tt>username</tt> is
+      <bcp14>OPTIONAL</bcp14>.  For all calculations and transcripts defined by
+      this document, an absent <tt>username</tt> is equivalent to an explicitly
+      empty username.  All formulas that reference <tt>username</tt> use the
+      received username value if present, or a zero-length string if absent.</t>
+      <t>If <tt>username</tt> is present, it is an identity hint.  The verifier
+      <bcp14>MAY</bcp14> use it to select an account, subscriber, endpoint, or
+      authorization record.  The verifier <bcp14>MUST</bcp14> still verify that
+      <tt>client-pubkey</tt> is trusted for the claimed <tt>username</tt> and
+      <tt>realm</tt>.  If <tt>username</tt> is absent, the verifier
+      <bcp14>MUST</bcp14> identify the peer by <tt>client-pubkey</tt> and
+      <tt>realm</tt> using local policy.</t>
+      <t>When <tt>qop=auth-int</tt> is used, the authentication calculation
+      includes the entity-body hash.  For SIP <tt>INVITE</tt> requests carrying
+      Session Description Protocol (SDP), this provides integrity protection for
+      the SDP body against attackers that cannot produce the required
+      authentication response.</t>
+      <t>The <tt>response</tt> value is algorithm-specific.  The
+      <tt>X25519-HKDF-SHA256</tt> and <tt>X25519-HMAC-SHA256</tt> algorithms
+      encode <tt>response</tt> as lowercase hexadecimal.  The
+      <tt>R25519-SCHNORR-SHA256</tt> algorithm uses a different format:
+      <tt>response</tt> is an unpadded base64url encoding of the 64-octet
+      Schnorr proof <tt>R_c || s_c</tt>.</t>
+    </section>
+
+    <section anchor="x25519-hkdf" numbered="true" toc="default">
+      <name>Algorithm: X25519-HKDF-SHA256</name>
+      <section anchor="x25519-hkdf-challenge" numbered="true" toc="default">
+        <name>Challenge</name>
+        <t>The UAS sends a Digest challenge with
+        <tt>algorithm=X25519-HKDF-SHA256</tt> and
+        <tt>server-pubkey</tt>.</t>
+        <artwork type="message/http"><![CDATA[
+WWW-Authenticate: Digest
+    realm="sip.example.net",
+    algorithm=X25519-HKDF-SHA256,
+    nonce="NQ7x0vR3VnP0aK9fW6tDHA",
+    qop="auth,auth-int",
+    server-pubkey="xRbeh9_DZBrONNFs7P8rhZhcLlXSw79RU5frhaOvIZc"
+]]></artwork>
+      </section>
+      <section anchor="x25519-hkdf-response" numbered="true" toc="default">
+        <name>Authorization Response</name>
+        <t>The UAC sends a Digest authorization response with
+        <tt>client-pubkey</tt>.  The <tt>username</tt> parameter
+        <bcp14>MAY</bcp14> be omitted.</t>
+        <t>Example with <tt>username</tt> present:</t>
+        <artwork type="message/http"><![CDATA[
+Authorization: Digest
+    username="alice",
+    realm="sip.example.net",
+    algorithm=X25519-HKDF-SHA256,
+    nonce="NQ7x0vR3VnP0aK9fW6tDHA",
+    uri="sip:bob@example.net",
+    qop=auth-int,
+    nc=00000001,
+    cnonce="q1w2e3r4t5y6",
+    client-pubkey="fPEDas5tsJgGPG_QMPVECsTySsC0TFGHRVSNcWSmABQ",
+    response="281847efc4a3739d638de9f729fb6b5565bb2f2a006f1719"
+]]></artwork>
+        <t>Example with <tt>username</tt> absent:</t>
+        <artwork type="message/http"><![CDATA[
+Authorization: Digest
+    realm="sip.example.net",
+    algorithm=X25519-HKDF-SHA256,
+    nonce="NQ7x0vR3VnP0aK9fW6tDHA",
+    uri="sip:bob@example.net",
+    qop=auth-int,
+    nc=00000001,
+    cnonce="q1w2e3r4t5y6",
+    client-pubkey="zLhVVAHkZJ8oNU-v2DKauUB_TvWBn1dpcBFtQL6kd6s",
+    response="fb2e80bda9f83361e995f1c7662b5cc32ee259f3c4ea9d66"
+]]></artwork>
+      </section>
+      <section anchor="x25519-hkdf-secret" numbered="true" toc="default">
+        <name>Shared Secret Calculation</name>
+        <t>The UAC computes <tt>Z = X25519(client-private-key,
+        server-pubkey)</tt>.  The UAS computes <tt>Z =
+        X25519(server-private-key, client-pubkey)</tt>.  Both sides
+        <bcp14>MUST</bcp14> reject the exchange if the computed X25519 shared
+        secret is the all-zero value.</t>
+        <t>The Digest response key <tt>K</tt> is derived with HKDF-SHA256
+        <xref target="RFC5869"/>:</t>
+        <sourcecode type="pseudocode"><![CDATA[
+salt = Transcript("SIP-Digest-X25519-HKDF-SHA256-salt-v1",
+                  nonce, cnonce)
+
+info = Transcript("SIP-Digest-X25519-HKDF-SHA256-info-v1",
+                  algorithm, username, realm, nonce, cnonce,
+                  server-pubkey, client-pubkey)
+
+K = HKDF-SHA256(IKM = Z, salt = salt, info = info, L = 32)
+]]></sourcecode>
+      </section>
+      <section anchor="x25519-hkdf-calc" numbered="true" toc="default">
+        <name>Response Calculation</name>
+        <t>The <tt>response</tt> value is computed as follows:</t>
+        <sourcecode type="pseudocode"><![CDATA[
+body-hash = ""                  ; for qop=auth
+body-hash = SHA-256(entity-body) ; for qop=auth-int
+
+HA1 = SHA-256(Transcript(
+          "SIP-Digest-X25519-HKDF-SHA256-HA1-v1",
+          username, realm, K))
+
+HA2 = SHA-256(Transcript(
+          "SIP-Digest-X25519-HKDF-SHA256-HA2-v1",
+          method, digest-uri, qop, body-hash))
+
+response = SHA-256(Transcript(
+          "SIP-Digest-X25519-HKDF-SHA256-response-v1",
+          HA1, nonce, nc, cnonce, qop, HA2))
+]]></sourcecode>
+        <t>The <tt>response</tt> value is encoded as lowercase hexadecimal
+        SHA-256 output.</t>
+      </section>
+    </section>
+
+    <section anchor="x25519-hmac" numbered="true" toc="default">
+      <name>Algorithm: X25519-HMAC-SHA256</name>
+      <t>The <tt>X25519-HMAC-SHA256</tt> algorithm uses the same
+      <tt>server-pubkey</tt> and <tt>client-pubkey</tt> parameters as
+      <tt>X25519-HKDF-SHA256</tt>, but computes the final <tt>response</tt> as
+      an HMAC <xref target="RFC2104"/> rather than as a Digest-style hash
+      chain.</t>
+      <section anchor="x25519-hmac-challenge" numbered="true" toc="default">
+        <name>Challenge</name>
+        <t>The UAS sends a Digest challenge with
+        <tt>algorithm=X25519-HMAC-SHA256</tt> and
+        <tt>server-pubkey</tt>.</t>
+        <artwork type="message/http"><![CDATA[
+WWW-Authenticate: Digest
+    realm="sip.example.net",
+    algorithm=X25519-HMAC-SHA256,
+    nonce="NQ7x0vR3VnP0aK9fW6tDHA",
+    qop="auth,auth-int",
+    server-pubkey="bzeK9qEcpcMStQYlqQbVs5NfjMMu76AlsKV587PvlT8"
+]]></artwork>
+      </section>
+      <section anchor="x25519-hmac-response" numbered="true" toc="default">
+        <name>Authorization Response</name>
+        <t>The UAC sends a Digest authorization response with
+        <tt>client-pubkey</tt>.  The <tt>username</tt> parameter
+        <bcp14>MAY</bcp14> be omitted.</t>
+        <t>Example with <tt>username</tt> present:</t>
+        <artwork type="message/http"><![CDATA[
+Authorization: Digest
+    username="alice",
+    realm="sip.example.net",
+    algorithm=X25519-HMAC-SHA256,
+    nonce="NQ7x0vR3VnP0aK9fW6tDHA",
+    uri="sip:bob@example.net",
+    qop=auth-int,
+    nc=00000001,
+    cnonce="q1w2e3r4t5y6",
+    client-pubkey="hDX3Ky19NCnnzATsdgvdu5BvPqwGdOOP1koEUWU6gZ4",
+    response="3401ac99fa30dacdeeb245749639dcd46c504611df2398dd"
+]]></artwork>
+        <t>Example with <tt>username</tt> absent:</t>
+        <artwork type="message/http"><![CDATA[
+Authorization: Digest
+    realm="sip.example.net",
+    algorithm=X25519-HMAC-SHA256,
+    nonce="NQ7x0vR3VnP0aK9fW6tDHA",
+    uri="sip:bob@example.net",
+    qop=auth-int,
+    nc=00000001,
+    cnonce="q1w2e3r4t5y6",
+    client-pubkey="dywz9UEYmTmzGXuNrfSZGw1maX0vGJ3i4kMPaHmRyzo",
+    response="14ec53f746359ba4d64ff8cf8d5667cbe64b14c9b50c4dd4"
+]]></artwork>
+      </section>
+      <section anchor="x25519-hmac-secret" numbered="true" toc="default">
+        <name>Shared Secret Calculation</name>
+        <t>The UAC computes <tt>Z = X25519(client-private-key,
+        server-pubkey)</tt>.  The UAS computes <tt>Z =
+        X25519(server-private-key, client-pubkey)</tt>.  Both sides
+        <bcp14>MUST</bcp14> reject the exchange if the computed X25519 shared
+        secret is the all-zero value.</t>
+        <sourcecode type="pseudocode"><![CDATA[
+K = SHA-256(Transcript(
+        "SIP-Digest-X25519-HMAC-SHA256-key-v1",
+        Z, algorithm, username, realm, nonce, cnonce,
+        server-pubkey, client-pubkey))
+]]></sourcecode>
+      </section>
+      <section anchor="x25519-hmac-calc" numbered="true" toc="default">
+        <name>HMAC Transcript</name>
+        <sourcecode type="pseudocode"><![CDATA[
+body-hash = ""                  ; for qop=auth
+body-hash = SHA-256(entity-body) ; for qop=auth-int
+
+transcript = Transcript(
+        "SIP-Digest-X25519-HMAC-SHA256-response-v1",
+        username, realm, nonce, nc, cnonce, qop,
+        method, digest-uri, body-hash, server-pubkey, client-pubkey)
+
+response = HMAC-SHA256(K, transcript)
+]]></sourcecode>
+        <t>The <tt>response</tt> value is encoded as lowercase hexadecimal
+        HMAC-SHA256 output.</t>
+      </section>
+    </section>
+
+    <section anchor="ristretto-schnorr" numbered="true" toc="default">
+      <name>Algorithm: R25519-SCHNORR-SHA256</name>
+      <t>The <tt>R25519-SCHNORR-SHA256</tt> algorithm defines a
+      Schnorr-style Fiat-Shamir non-interactive proof of knowledge over the
+      ristretto255 group.  The UAC proves knowledge of a scalar <tt>x_c</tt>
+      corresponding to <tt>client-pubkey = x_c * G</tt>, where <tt>G</tt> is
+      the canonical ristretto255 base point.</t>
+
+      <section anchor="server-challenge-request" numbered="true" toc="default">
+        <name>Optional Authenticated Server Challenge Request</name>
+        <t>A UAC <bcp14>MAY</bcp14> request an authenticated server challenge
+        by including <tt>client-challenge</tt> in an initial request.</t>
+        <artwork type="message/http"><![CDATA[
+INVITE sip:bob@example.net SIP/2.0
+Authorization: Digest
+    algorithm=R25519-SCHNORR-SHA256,
+    client-challenge="0Xc7ag8QRtRWlamLDDozsA"
+]]></artwork>
+        <t>This header does not authenticate the UAC.  It only supplies
+        freshness for an authenticated server challenge.  A UAC that sends
+        <tt>client-challenge</tt> <bcp14>MUST</bcp14> remember the value locally
+        until it receives and verifies the corresponding
+        <tt>WWW-Authenticate</tt> or <tt>Proxy-Authenticate</tt> challenge, or
+        until the transaction is abandoned.</t>
+      </section>
+
+      <section anchor="ristretto-challenge" numbered="true" toc="default">
+        <name>Challenge</name>
+        <t>The UAS sends a Digest challenge with
+        <tt>algorithm=R25519-SCHNORR-SHA256</tt> and
+        <tt>server-pubkey</tt>.  If the request contained a valid
+        <tt>client-challenge</tt>, the UAS <bcp14>MAY</bcp14> include
+        <tt>server-response</tt>.</t>
+        <artwork type="message/http"><![CDATA[
+WWW-Authenticate: Digest
+    realm="sip.example.net",
+    algorithm=R25519-SCHNORR-SHA256,
+    nonce="NQ7x0vR3VnP0aK9fW6tDHA",
+    qop="auth,auth-int",
+    server-pubkey="xBiXzi82PKyiSqcRBXJauiNECbQDQZfzt-RRwzsKAXs",
+    server-response="neTvyoW2SLh32ob-UTteu_ragDBe2Ub3wqhm969gjlw"
+]]></artwork>
+      </section>
+
+      <section anchor="server-proof" numbered="true" toc="default">
+        <name>Authenticated Server Challenge Proof</name>
+        <t>When <tt>server-response</tt> is present, it proves possession of
+        the private scalar corresponding to <tt>server-pubkey</tt>.  The UAS has
+        private scalar <tt>x_s</tt> and public key <tt>A_s = x_s * G</tt>,
+        where <tt>A_s</tt> is <tt>server-pubkey</tt>.</t>
+        <sourcecode type="pseudocode"><![CDATA[
+T_srv_chal = Transcript(
+    "SIP-Digest-R25519-SCHNORR-SHA256-ServerChallenge-v1",
+    algorithm, method, digest-uri, realm, nonce, qop-list,
+    server-pubkey, client-challenge)
+
+R_s = r_s * G
+c_s = SHA-256(Transcript(
+          "SIP-Digest-R25519-SCHNORR-SHA256-ServerChallenge-c-v1",
+          T_srv_chal, R_s)) mod L
+s_s = r_s + c_s * x_s mod L
+
+server-response = base64url(R_s || s_s)
+]]></sourcecode>
+        <t><tt>r_s</tt> is a fresh random scalar and <tt>L</tt> is the
+        ristretto255 group order.  The UAC verifies by recomputing the
+        transcript and checking <tt>s_s * G == R_s + c_s * A_s</tt>.</t>
+        <t>The UAC <bcp14>MUST</bcp14> reject the challenge if
+        <tt>server-response</tt> is required by local policy and is absent,
+        malformed, invalid, not bound to the locally remembered
+        <tt>client-challenge</tt>, or not valid for the received
+        <tt>server-pubkey</tt>.</t>
+      </section>
+
+      <section anchor="uac-proof" numbered="true" toc="default">
+        <name>Authorization Proof</name>
+        <t>The UAC sends a Digest authorization response with
+        <tt>client-pubkey</tt>.  The <tt>username</tt> parameter
+        <bcp14>MAY</bcp14> be omitted.  The <tt>response</tt> parameter
+        contains <tt>base64url(R_c || s_c)</tt>, where <tt>R_c</tt> is a
+        compressed ristretto255 commitment and <tt>s_c</tt> is a canonical
+        scalar modulo the group order.  This differs from the hexadecimal
+        Digest response values used by the X25519 algorithms.  The decoded
+        value is exactly 64 octets.</t>
+        <sourcecode type="pseudocode"><![CDATA[
+A_c = x_c * G
+R_c = r_c * G
+
+body-hash = ""                  ; for qop=auth
+body-hash = SHA-256(entity-body) ; for qop=auth-int
+
+T_uac = Transcript(
+    "SIP-Digest-R25519-SCHNORR-SHA256-UAC-v1",
+    algorithm, username, realm, nonce, nc, cnonce, qop,
+    method, digest-uri, body-hash, server-pubkey, client-pubkey)
+
+c_c = SHA-256(Transcript(
+          "SIP-Digest-R25519-SCHNORR-SHA256-UAC-c-v1",
+          T_uac, R_c)) mod L
+s_c = r_c + c_c * x_c mod L
+
+response = base64url(R_c || s_c)
+]]></sourcecode>
+        <t>The UAS decodes <tt>A_c</tt> from <tt>client-pubkey</tt>,
+        reconstructs <tt>T_uac</tt> from the received request and Digest
+        parameters, and accepts only if <tt>s_c * G == R_c + c_c * A_c</tt>.
+        The UAS <bcp14>MUST</bcp14> reject malformed ristretto255 encodings,
+        non-canonical scalars, invalid proof lengths, and proofs that are not
+        valid for the exact received transcript.</t>
+        <t>A proof generated for one method, URI, nonce, cnonce, nonce-count,
+        qop value, body, realm, server public key, client public key, or
+        username value <bcp14>MUST NOT</bcp14> be accepted for another.</t>
+      </section>
+    </section>
+
+    <section anchor="verification" numbered="true" toc="default">
+      <name>Verification Rules</name>
+      <t>A receiver <bcp14>MUST</bcp14> reject authentication if any of the
+      following are true:</t>
+      <ul>
+        <li><tt>server-pubkey</tt> is absent from the challenge;</li>
+        <li><tt>client-pubkey</tt> is absent from the authorization response;</li>
+        <li><tt>realm</tt> is absent from the challenge or authorization
+        response;</li>
+        <li>a public key is malformed for the selected algorithm;</li>
+        <li>the peer public key is not trusted for the claimed identity or
+        realm;</li>
+        <li><tt>nonce</tt> is expired, unknown, malformed, or already
+        consumed;</li>
+        <li><tt>nc</tt> does not increase monotonically for the nonce and client
+        identity pair;</li>
+        <li><tt>cnonce</tt> is absent when <tt>qop</tt> is present;</li>
+        <li><tt>qop</tt> is unsupported;</li>
+        <li><tt>response</tt> is malformed; or</li>
+        <li><tt>response</tt> does not match or verify against the locally
+        computed value.</li>
+      </ul>
+      <t>For <tt>R25519-SCHNORR-SHA256</tt>, a receiver
+      <bcp14>MUST</bcp14> also reject authentication if
+      <tt>server-response</tt> is malformed when present, is absent when
+      required by local policy, or does not verify against the locally
+      remembered <tt>client-challenge</tt>.</t>
+      <t>A UAS <bcp14>MUST NOT</bcp14> authenticate a UAC merely because
+      <tt>client-pubkey</tt> is present.  The <tt>client-pubkey</tt> value
+      <bcp14>MUST</bcp14> be bound to a trusted identity, such as the
+      <tt>username</tt> if present, configured endpoint, account, subscriber,
+      realm, or equivalent local authorization record.</t>
+      <t>A UAC <bcp14>MUST NOT</bcp14> answer a challenge merely because
+      <tt>server-pubkey</tt> is present.  The <tt>server-pubkey</tt> value
+      <bcp14>MUST</bcp14> be present in the UAC's trusted key list for the
+      challenged peer, realm, outbound proxy, or service domain.</t>
+      <t>Implementations <bcp14>MUST</bcp14> reject algorithm identifiers other
+      than those explicitly defined by this document or locally configured for
+      this mechanism.</t>
+    </section>
+
+    <section anchor="replay" numbered="true" toc="default">
+      <name>Replay Protection</name>
+      <t>The UAS <bcp14>MUST</bcp14> generate nonces with sufficient entropy
+      and unpredictability.  The UAS <bcp14>MUST</bcp14> reject replayed tuples
+      of <tt>client-pubkey</tt>, <tt>nonce</tt>, <tt>nc</tt>, and
+      <tt>cnonce</tt>.  If <tt>username</tt> is present, the UAS
+      <bcp14>MAY</bcp14> also include <tt>username</tt> in the replay cache
+      key.  The UAS <bcp14>SHOULD</bcp14> expire nonces after a short interval
+      and <bcp14>SHOULD</bcp14> bind nonces to the challenged realm, selected
+      algorithm, and <tt>server-pubkey</tt>.</t>
+      <t>The UAC <bcp14>SHOULD</bcp14> generate a fresh
+      <tt>client-challenge</tt> for each initial authenticated challenge
+      request.  The UAC <bcp14>MUST NOT</bcp14> accept a
+      <tt>server-response</tt> generated for a different
+      <tt>client-challenge</tt>.</t>
+    </section>
+
+    <section anchor="body-integrity" numbered="true" toc="default">
+      <name>Body Integrity</name>
+      <t>When <tt>qop=auth-int</tt> is used, the entity-body hash is included
+      in the authentication calculation.  For SIP requests carrying SDP, this
+      protects the SDP body against modification by an attacker that does not
+      know the X25519-derived authentication secret or cannot generate the
+      required ristretto255 Schnorr proof.</t>
+      <t>If intermediaries are expected to modify the SDP body,
+      <tt>qop=auth-int</tt> can fail unless the modification happens before the
+      UAC computes the authorization response or unless the deployment
+      explicitly permits such behavior.</t>
+    </section>
+
+    <section anchor="examples" numbered="true" toc="default">
+      <name>Examples</name>
+      <section anchor="example-server-challenge-request" numbered="true" toc="default">
+        <name>Initial Request Asking for Authenticated Server Challenge</name>
+        <artwork type="message/http"><![CDATA[
+INVITE sip:bob@example.net SIP/2.0
+Via: SIP/2.0/TLS client.example.org;branch=z9hG4bK776asdhds
+From: <sip:alice@example.org>;tag=1928301774
+To: <sip:bob@example.net>
+Call-ID: a84b4c76e66710@example.org
+CSeq: 314159 INVITE
+Authorization: Digest algorithm=R25519-SCHNORR-SHA256,
+    client-challenge="QG7xYpk5XlVz9hHMKx3uRg"
+Content-Length: 0
+]]></artwork>
+      </section>
+      <section anchor="example-ristretto-challenge" numbered="true" toc="default">
+        <name>Authenticated R25519-SCHNORR-SHA256 Challenge</name>
+        <artwork type="message/http"><![CDATA[
+SIP/2.0 401 Unauthorized
+Via: SIP/2.0/TLS client.example.org;branch=z9hG4bK776asdhds
+From: <sip:alice@example.org>;tag=1928301774
+To: <sip:bob@example.net>;tag=a6c85cf
+Call-ID: a84b4c76e66710@example.org
+CSeq: 314159 INVITE
+WWW-Authenticate: Digest realm="sip.example.net",
+    algorithm=R25519-SCHNORR-SHA256,
+    nonce="NQ7x0vR3VnP0aK9fW6tDHA",
+    qop="auth,auth-int",
+    server-pubkey="V8nM6R1l7Pp4sLdbZSyGx6Fv5F1LxPvV9gzLg4YhV2I",
+    server-response="Jvx3L4ZPTVq43cacYBONePT4nInA-F8FPqL1mv7ORC0"
+Content-Length: 0
+]]></artwork>
+      </section>
+      <section anchor="example-ristretto-authorization" numbered="true" toc="default">
+        <name>R25519-SCHNORR-SHA256 Authorization with Username</name>
+        <artwork type="message/http"><![CDATA[
+INVITE sip:bob@example.net SIP/2.0
+Via: SIP/2.0/TLS client.example.org;branch=z9hG4bK776asdhds
+From: <sip:alice@example.org>;tag=1928301774
+To: <sip:bob@example.net>
+Call-ID: a84b4c76e66710@example.org
+CSeq: 314160 INVITE
+Contact: <sip:alice@client.example.org>
+Authorization: Digest username="alice",
+    realm="sip.example.net",
+    algorithm=R25519-SCHNORR-SHA256,
+    nonce="NQ7x0vR3VnP0aK9fW6tDHA",
+    uri="sip:bob@example.net",
+    qop=auth-int,
+    nc=00000001,
+    cnonce="q1w2e3r4t5y6",
+    client-pubkey="LKz2bq0TLeHqkCJ2m6v9MGWQp9WnZtDZ9pYyHk4IoX0",
+    response="mU7Wgqm2wHIAk993xXo6OXKMQBNtgl-mFJQ_-Rgo8oI"
+Content-Type: application/sdp
+Content-Length: ...
+]]></artwork>
+      </section>
+      <section anchor="example-ristretto-authorization-no-username" numbered="true" toc="default">
+        <name>R25519-SCHNORR-SHA256 Authorization without Username</name>
+        <artwork type="message/http"><![CDATA[
+INVITE sip:bob@example.net SIP/2.0
+Via: SIP/2.0/TLS client.example.org;branch=z9hG4bK776asdhds
+From: <sip:alice@example.org>;tag=1928301774
+To: <sip:bob@example.net>
+Call-ID: a84b4c76e66710@example.org
+CSeq: 314160 INVITE
+Contact: <sip:alice@client.example.org>
+Authorization: Digest
+    realm="sip.example.net",
+    algorithm=R25519-SCHNORR-SHA256,
+    nonce="NQ7x0vR3VnP0aK9fW6tDHA",
+    uri="sip:bob@example.net",
+    qop=auth-int,
+    nc=00000001,
+    cnonce="q1w2e3r4t5y6",
+    client-pubkey="a0t5YmU8Ppgp0zLGgwsVXnxViPImkjyyzWTDj5wfmxE",
+    response="bde_KoYDFV3SYJa55WppUdlgLjhgM3vqT5U7qa6YR_o"
+Content-Type: application/sdp
+Content-Length: ...
+]]></artwork>
+      </section>
+      <section anchor="example-x25519-challenge" numbered="true" toc="default">
+        <name>X25519-HKDF-SHA256 Challenge</name>
+        <artwork type="message/http"><![CDATA[
+SIP/2.0 401 Unauthorized
+Via: SIP/2.0/TLS client.example.org;branch=z9hG4bK776asdhds
+From: <sip:alice@example.org>;tag=1928301774
+To: <sip:bob@example.net>;tag=a6c85cf
+Call-ID: a84b4c76e66710@example.org
+CSeq: 314159 INVITE
+WWW-Authenticate: Digest realm="sip.example.net",
+    algorithm=X25519-HKDF-SHA256,
+    nonce="NQ7x0vR3VnP0aK9fW6tDHA",
+    qop="auth,auth-int",
+    server-pubkey="V8nM6R1l7Pp4sLdbZSyGx6Fv5F1LxPvV9gzLg4YhV2I"
+Content-Length: 0
+]]></artwork>
+      </section>
+      <section anchor="example-x25519-authorization" numbered="true" toc="default">
+        <name>X25519-HKDF-SHA256 Authorization with Username</name>
+        <artwork type="message/http"><![CDATA[
+INVITE sip:bob@example.net SIP/2.0
+Via: SIP/2.0/TLS client.example.org;branch=z9hG4bK776asdhds
+From: <sip:alice@example.org>;tag=1928301774
+To: <sip:bob@example.net>
+Call-ID: a84b4c76e66710@example.org
+CSeq: 314160 INVITE
+Contact: <sip:alice@client.example.org>
+Authorization: Digest username="alice",
+    realm="sip.example.net",
+    algorithm=X25519-HKDF-SHA256,
+    nonce="NQ7x0vR3VnP0aK9fW6tDHA",
+    uri="sip:bob@example.net",
+    qop=auth-int,
+    nc=00000001,
+    cnonce="q1w2e3r4t5y6",
+    client-pubkey="LKz2bq0TLeHqkCJ2m6v9MGWQp9WnZtDZ9pYyHk4IoX0",
+    response="92eab8507440bf720bfffdffcdab35c785ddee69d419db58"
+Content-Type: application/sdp
+Content-Length: ...
+]]></artwork>
+      </section>
+      <section anchor="example-x25519-authorization-no-username" numbered="true" toc="default">
+        <name>X25519-HKDF-SHA256 Authorization without Username</name>
+        <artwork type="message/http"><![CDATA[
+INVITE sip:bob@example.net SIP/2.0
+Via: SIP/2.0/TLS client.example.org;branch=z9hG4bK776asdhds
+From: <sip:alice@example.org>;tag=1928301774
+To: <sip:bob@example.net>
+Call-ID: a84b4c76e66710@example.org
+CSeq: 314160 INVITE
+Contact: <sip:alice@client.example.org>
+Authorization: Digest
+    realm="sip.example.net",
+    algorithm=X25519-HKDF-SHA256,
+    nonce="NQ7x0vR3VnP0aK9fW6tDHA",
+    uri="sip:bob@example.net",
+    qop=auth-int,
+    nc=00000001,
+    cnonce="q1w2e3r4t5y6",
+    client-pubkey="q6wi4GXRx1poYAVvqcp7nmC4FU0MDxnvooatixWp1mY",
+    response="d857749505ba1cc5262d945bfd793d7988f6a0d675eab113"
+Content-Type: application/sdp
+Content-Length: ...
+]]></artwork>
+      </section>
+    </section>
+
+    <section anchor="iana" numbered="true" toc="default">
+      <name>IANA Considerations</name>
+      <t>This document requests registration of the following Digest algorithm
+      tokens in the applicable Digest algorithm registry:</t>
+      <ul>
+        <li><tt>X25519-HKDF-SHA256</tt></li>
+        <li><tt>X25519-HMAC-SHA256</tt></li>
+        <li><tt>R25519-SCHNORR-SHA256</tt></li>
+      </ul>
+      <t>The following Digest authentication parameters are also defined by
+      this document: <tt>server-pubkey</tt>, <tt>client-pubkey</tt>,
+      <tt>client-challenge</tt>, and <tt>server-response</tt>.</t>
+    </section>
+
+    <section anchor="implementation" numbered="true" toc="default">
+      <name>Implementation Notes</name>
+      <t>Implementations <bcp14>SHOULD</bcp14> use well-reviewed cryptographic
+      libraries for X25519, HKDF-SHA256, HMAC-SHA256, SHA-256, and
+      ristretto255.  Implementations <bcp14>SHOULD</bcp14> avoid accepting
+      algorithm aliases.</t>
+      <t>Implementations <bcp14>SHOULD</bcp14> domain-separate every proof or
+      MAC input exactly as specified.</t>
+      <t>Implementations <bcp14>SHOULD</bcp14> log authentication failures
+      without logging private keys, shared secrets, raw proof scalars, derived
+      keys, or complete authentication transcripts.</t>
+      <t>Implementations <bcp14>SHOULD</bcp14> treat
+      <tt>server-pubkey</tt> and <tt>client-pubkey</tt> as identity-bearing
+      material and apply local authorization policy before accepting a
+      request.</t>
+      <t>Implementations need to account for generic Digest parsers that assume
+      <tt>username</tt> is always present.  Implementations of this
+      specification <bcp14>MUST</bcp14> support the absence of
+      <tt>username</tt> for the algorithms defined here.</t>
+    </section>
+
+    <section anchor="security" numbered="true" toc="default">
+      <name>Security Considerations</name>
+      <t>This mechanism prevents impersonation only when both sides have
+      securely provisioned trust anchors.  X25519 by itself is not
+      authentication.  Authentication is achieved only by deriving a secret from
+      a trusted peer public key and proving possession of the corresponding
+      private key through the Digest <tt>response</tt>.</t>
+      <t>For <tt>X25519-HKDF-SHA256</tt> and
+      <tt>X25519-HMAC-SHA256</tt>, the UAC trusts the UAS X25519 public key and
+      the UAS trusts the UAC X25519 public key.  For
+      <tt>R25519-SCHNORR-SHA256</tt>, the UAS trusts the UAC ristretto255
+      public key, and the UAC trusts the UAS ristretto255 public key when
+      authenticated server challenges are required by local policy.</t>
+      <t>The ristretto255 Schnorr algorithm authenticates the UAC by proving
+      knowledge of the private scalar corresponding to <tt>client-pubkey</tt>,
+      bound to the SIP Digest transcript.  The <tt>server-response</tt>
+      parameter authenticates the server challenge by proving knowledge of the
+      private scalar corresponding to <tt>server-pubkey</tt>, bound to a
+      UAC-generated <tt>client-challenge</tt>.</t>
+      <t>These algorithms authenticate SIP Digest exchanges and, when
+      <tt>qop=auth-int</tt> is used, provide integrity protection for the
+      authenticated SIP entity body.  They do not establish a confidential
+      transport channel or provide media confidentiality, media key secrecy, or
+      session key secrecy.  Deployments requiring confidentiality, traffic
+      metadata protection, transport-layer peer authentication, media
+      confidentiality, or media key secrecy <bcp14>SHOULD</bcp14> use SIP over
+      TLS and appropriate media-security mechanisms.</t>
+      <t>Long-term static X25519 keys do not provide forward secrecy.  If
+      forward secrecy is required, this mechanism needs an extension that uses
+      ephemeral X25519 keys and authenticates the binding between ephemeral and
+      static identities.</t>
+      <t>Schnorr nonces <bcp14>MUST</bcp14> be generated with high-quality
+      randomness or by a deterministic nonce generation construction with
+      equivalent security.  Reusing a Schnorr nonce with the same private scalar
+      can reveal the private scalar.</t>
+      <t>Implementations <bcp14>MUST</bcp14> use constant-time comparison when
+      checking MAC or hash responses and <bcp14>SHOULD</bcp14> use
+      constant-time scalar and group operations where provided by the
+      cryptographic library.</t>
+      <t>The <tt>MD5</tt> algorithm <bcp14>MUST NOT</bcp14> be used with this
+      mechanism.</t>
+    </section>
+  </middle>
+
+  <back>
+    <references>
+      <name>Normative References</name>
+      <xi:include href="https://bib.ietf.org/public/rfc/bibxml/reference.RFC.2104.xml"/>
+      <xi:include href="https://bib.ietf.org/public/rfc/bibxml/reference.RFC.2119.xml"/>
+      <xi:include href="https://bib.ietf.org/public/rfc/bibxml/reference.RFC.3261.xml"/>
+      <xi:include href="https://bib.ietf.org/public/rfc/bibxml/reference.RFC.4648.xml"/>
+      <xi:include href="https://bib.ietf.org/public/rfc/bibxml/reference.RFC.5234.xml"/>
+      <xi:include href="https://bib.ietf.org/public/rfc/bibxml/reference.RFC.5869.xml"/>
+      <xi:include href="https://bib.ietf.org/public/rfc/bibxml/reference.RFC.6234.xml"/>
+      <xi:include href="https://bib.ietf.org/public/rfc/bibxml/reference.RFC.7748.xml"/>
+      <xi:include href="https://bib.ietf.org/public/rfc/bibxml/reference.RFC.8174.xml"/>
+      <xi:include href="https://bib.ietf.org/public/rfc/bibxml/reference.RFC.8760.xml"/>
+      <xi:include href="https://bib.ietf.org/public/rfc/bibxml/reference.RFC.9496.xml"/>
+    </references>
+  </back>
+</rfc>
