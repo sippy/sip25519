@@ -70,6 +70,13 @@ private key does not need to be shared with the peer, and the public key can be
 distributed through configuration, inventory, orchestration, certificates, or another
 trust-management system.
 
+The mechanisms in this document use modern elliptic-curve primitives rather than older
+RSA-based public-key schemes. X25519 and ristretto255 provide compact public keys and
+authentication material, efficient constant-time implementations, and simpler fixed-size
+encodings. These properties are useful for SIP deployments where authentication data is
+carried in header fields and where endpoints may need to perform many authentication
+operations per second.
+
 The goal of these mechanisms is to support deployments where authorization is tied to
 possession of a configured private key rather than knowledge of a shared password, while
 preserving SIP Digest processing. This model also supports deployments where a request

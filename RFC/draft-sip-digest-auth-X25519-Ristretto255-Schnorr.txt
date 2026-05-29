@@ -195,6 +195,14 @@ Internet-Draft    SIP Digest Public-Key Authentication          May 2026
    distributed through configuration, inventory, orchestration,
    certificates, or another trust-management system.
 
+   The mechanisms in this document use modern elliptic-curve primitives
+   rather than older RSA-based public-key schemes.  X25519 and
+   ristretto255 provide compact public keys and authentication material,
+   efficient constant-time implementations, and simpler fixed-size
+   encodings.  These properties are useful for SIP deployments where
+   authentication data is carried in header fields and where endpoints
+   may need to perform many authentication operations per second.
+
    The goal of these mechanisms is to support deployments where
    authorization is tied to possession of a configured private key
    rather than knowledge of a shared password, while preserving SIP
@@ -210,14 +218,6 @@ Internet-Draft    SIP Digest Public-Key Authentication          May 2026
    integrity, and transport-layer peer authentication.  However, TLS
    authentication is tied to the transport connection and does not by
    itself define SIP Digest identities, Digest realm scoping, SIP
-   authorization policy, or authentication of individual SIP requests
-   and entity bodies through the Digest qop model.  The mechanisms in
-   this document are therefore complementary to TLS rather than
-   replacements for it.
-
-
-
-
 
 
 
@@ -225,6 +225,11 @@ Sobolyev                Expires 30 November 2026                [Page 4]
 
 Internet-Draft    SIP Digest Public-Key Authentication          May 2026
 
+
+   authorization policy, or authentication of individual SIP requests
+   and entity bodies through the Digest qop model.  The mechanisms in
+   this document are therefore complementary to TLS rather than
+   replacements for it.
 
 3.  Conventions and Terminology
 
@@ -270,17 +275,15 @@ Internet-Draft    SIP Digest Public-Key Authentication          May 2026
    client-challenge   = "client-challenge" EQUAL b64q
    server-response    = "server-response" EQUAL b64q
 
-   ALPHA, DIGIT, and DQUOTE are defined by [RFC5234].  EQUAL is
-   inherited from the SIP grammar in [RFC3261].
-
-
-
 
 
 Sobolyev                Expires 30 November 2026                [Page 5]
 
 Internet-Draft    SIP Digest Public-Key Authentication          May 2026
 
+
+   ALPHA, DIGIT, and DQUOTE are defined by [RFC5234].  EQUAL is
+   inherited from the SIP grammar in [RFC3261].
 
 4.1.  server-pubkey
 
@@ -325,10 +328,7 @@ Internet-Draft    SIP Digest Public-Key Authentication          May 2026
    in the 401 or 407 challenge response.  The UAS MUST NOT echo client-
    challenge in WWW-Authenticate or Proxy-Authenticate.
 
-   The UAC MUST verify server-response using the locally remembered
-   client-challenge value that it generated and sent.  The UAC MUST NOT
-   use any reflected or received client-challenge value from a response
-   header when verifying server-response.
+
 
 
 
@@ -337,6 +337,11 @@ Sobolyev                Expires 30 November 2026                [Page 6]
 
 Internet-Draft    SIP Digest Public-Key Authentication          May 2026
 
+
+   The UAC MUST verify server-response using the locally remembered
+   client-challenge value that it generated and sent.  The UAC MUST NOT
+   use any reflected or received client-challenge value from a response
+   header when verifying server-response.
 
 4.4.  server-response
 
@@ -379,11 +384,6 @@ Internet-Draft    SIP Digest Public-Key Authentication          May 2026
    octets when they are transcript fields.  The final line feed is part
    of the transcript.
 
-   For qop=auth, the body-hash transcript field is the zero-length
-   value.  For qop=auth-int, it is the raw 32-octet SHA-256 digest of
-   the entity body.
-
-
 
 
 
@@ -393,6 +393,10 @@ Sobolyev                Expires 30 November 2026                [Page 7]
 
 Internet-Draft    SIP Digest Public-Key Authentication          May 2026
 
+
+   For qop=auth, the body-hash transcript field is the zero-length
+   value.  For qop=auth-int, it is the raw 32-octet SHA-256 digest of
+   the entity body.
 
 6.  Common Digest Fields
 
@@ -434,12 +438,8 @@ Internet-Draft    SIP Digest Public-Key Authentication          May 2026
    The UAS sends a Digest challenge with algorithm=X25519-HKDF-SHA256
    and server-pubkey.
 
-   WWW-Authenticate: Digest
-       realm="sip.example.net",
-       algorithm=X25519-HKDF-SHA256,
-       nonce="NQ7x0vR3VnP0aK9fW6tDHA",
-       qop="auth,auth-int",
-       server-pubkey="xRbeh9_DZBrONNFs7P8rhZhcLlXSw79RU5frhaOvIZc"
+
+
 
 
 
@@ -449,6 +449,13 @@ Sobolyev                Expires 30 November 2026                [Page 8]
 
 Internet-Draft    SIP Digest Public-Key Authentication          May 2026
 
+
+   WWW-Authenticate: Digest
+       realm="sip.example.net",
+       algorithm=X25519-HKDF-SHA256,
+       nonce="NQ7x0vR3VnP0aK9fW6tDHA",
+       qop="auth,auth-int",
+       server-pubkey="xRbeh9_DZBrONNFs7P8rhZhcLlXSw79RU5frhaOvIZc"
 
 7.2.  Authorization Response
 
@@ -490,13 +497,6 @@ Internet-Draft    SIP Digest Public-Key Authentication          May 2026
    is the all-zero value.
 
    The Digest response key K is derived with HKDF-SHA256 [RFC5869]:
-
-
-
-
-
-
-
 
 
 
