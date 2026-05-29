@@ -1,3 +1,7 @@
+[![Build](https://github.com/sippy/sip25519/actions/workflows/build.yml/badge.svg)](https://github.com/sippy/sip25519/actions/workflows/build.yml)
+
+<!-- Generated content below. Edit README.md.pre for the preamble. -->
+
 # SIP Digest Authentication with X25519 Shared Secrets and Ristretto255 Schnorr Proofs
 
 *Internet-Draft: `draft-sobolyev-sip-digest-auth-x25519-ristretto255-schnorr-00`*
