@@ -754,14 +754,17 @@ always present. Implementations of this specification **MUST** support the absen
 ## 16. Security Considerations
 
 This mechanism prevents impersonation only when both sides have securely provisioned
-trust anchors. X25519 by itself is not authentication. Authentication is achieved only
-by deriving a secret from a trusted peer public key and proving possession of the
-corresponding private key through the Digest `response`.
+peer public keys, bind those keys to the applicable realm and authorization identity,
+and enforce the replay protections required by this document. X25519 by itself is not
+authentication. Authentication is achieved only by deriving a secret from a trusted peer
+public key and proving possession of the corresponding private key through the Digest
+`response`.
 
 For `X25519-HKDF-SHA256` and `X25519-HMAC-SHA256`, the UAC trusts the UAS X25519 public
 key and the UAS trusts the UAC X25519 public key. For `R25519-SCHNORR-SHA256`, the UAS
 trusts the UAC ristretto255 public key, and the UAC trusts the UAS ristretto255 public
-key when authenticated server challenges are required by local policy.
+key before answering the challenge. The `server-response` parameter provides
+authenticated server challenges when required by local policy.
 
 The ristretto255 Schnorr algorithm authenticates the UAC by proving knowledge of the
 private scalar corresponding to `client-pubkey`, bound to the SIP Digest transcript. The
@@ -769,16 +772,21 @@ private scalar corresponding to `client-pubkey`, bound to the SIP Digest transcr
 the private scalar corresponding to `server-pubkey`, bound to a UAC-generated
 `client-challenge`.
 
+Nonce freshness, nonce-count validation, client nonce validation, and replay-cache
+enforcement are part of the security of this mechanism. An implementation that accepts
+replayed Digest responses can authenticate a stale request even when the cryptographic
+proof or MAC is otherwise valid.
+
 These algorithms authenticate SIP Digest exchanges and, when `qop=auth-int` is used,
 provide integrity protection for the authenticated SIP entity body. They do not
-establish a confidential transport channel or provide media confidentiality, media key
-secrecy, or session key secrecy. Deployments requiring confidentiality, traffic metadata
-protection, transport-layer peer authentication, media confidentiality, or media key
-secrecy **SHOULD** use SIP over TLS and appropriate media-security mechanisms.
+establish a confidential transport channel, protect SIP metadata, or provide media
+security. Deployments requiring confidential signaling, SIP metadata protection,
+transport-layer peer authentication, or media security **SHOULD** use SIP over TLS and
+appropriate media-security mechanisms.
 
-Long-term static X25519 keys do not provide forward secrecy. If forward secrecy is
-required, this mechanism needs an extension that uses ephemeral X25519 keys and
-authenticates the binding between ephemeral and static identities.
+Compromise of a provisioned private key enables impersonation for the identities and
+realms authorized for the corresponding public key. Deployments need operational
+procedures for protecting, rotating, and revoking keys according to local policy.
 
 Schnorr nonces **MUST** be generated with high-quality randomness or by a deterministic
 nonce generation construction with equivalent security. Reusing a Schnorr nonce with the
@@ -787,8 +795,6 @@ same private scalar can reveal the private scalar.
 Implementations **MUST** use constant-time comparison when checking MAC or hash
 responses and **SHOULD** use constant-time scalar and group operations where provided by
 the cryptographic library.
-
-The `MD5` algorithm **MUST NOT** be used with this mechanism.
 
 ## Normative References
 

@@ -1078,7 +1078,9 @@ Internet-Draft    SIP Digest Public-Key Authentication          May 2026
 16.  Security Considerations
 
    This mechanism prevents impersonation only when both sides have
-   securely provisioned trust anchors.  X25519 by itself is not
+   securely provisioned peer public keys, bind those keys to the
+   applicable realm and authorization identity, and enforce the replay
+   protections required by this document.  X25519 by itself is not
    authentication.  Authentication is achieved only by deriving a secret
    from a trusted peer public key and proving possession of the
    corresponding private key through the Digest response.
@@ -1086,8 +1088,9 @@ Internet-Draft    SIP Digest Public-Key Authentication          May 2026
    For X25519-HKDF-SHA256 and X25519-HMAC-SHA256, the UAC trusts the UAS
    X25519 public key and the UAS trusts the UAC X25519 public key.  For
    R25519-SCHNORR-SHA256, the UAS trusts the UAC ristretto255 public
-   key, and the UAC trusts the UAS ristretto255 public key when
-   authenticated server challenges are required by local policy.
+   key, and the UAC trusts the UAS ristretto255 public key before
+   answering the challenge.  The server-response parameter provides
+   authenticated server challenges when required by local policy.
 
    The ristretto255 Schnorr algorithm authenticates the UAC by proving
    knowledge of the private scalar corresponding to client-pubkey, bound
@@ -1096,24 +1099,21 @@ Internet-Draft    SIP Digest Public-Key Authentication          May 2026
    private scalar corresponding to server-pubkey, bound to a UAC-
    generated client-challenge.
 
+   Nonce freshness, nonce-count validation, client nonce validation, and
+   replay-cache enforcement are part of the security of this mechanism.
+   An implementation that accepts replayed Digest responses can
+   authenticate a stale request even when the cryptographic proof or MAC
+   is otherwise valid.
+
    These algorithms authenticate SIP Digest exchanges and, when
    qop=auth-int is used, provide integrity protection for the
    authenticated SIP entity body.  They do not establish a confidential
-   transport channel or provide media confidentiality, media key
-   secrecy, or session key secrecy.  Deployments requiring
-   confidentiality, traffic metadata protection, transport-layer peer
-   authentication, media confidentiality, or media key secrecy SHOULD
-   use SIP over TLS and appropriate media-security mechanisms.
+   transport channel, protect SIP metadata, or provide media security.
+   Deployments requiring confidential signaling, SIP metadata
+   protection, transport-layer peer authentication, or media security
+   SHOULD use SIP over TLS and appropriate media-security mechanisms.
 
-   Long-term static X25519 keys do not provide forward secrecy.  If
-   forward secrecy is required, this mechanism needs an extension that
-   uses ephemeral X25519 keys and authenticates the binding between
-   ephemeral and static identities.
 
-   Schnorr nonces MUST be generated with high-quality randomness or by a
-   deterministic nonce generation construction with equivalent security.
-   Reusing a Schnorr nonce with the same private scalar can reveal the
-   private scalar.
 
 
 
@@ -1122,11 +1122,19 @@ Sobolyev                Expires 30 November 2026               [Page 20]
 Internet-Draft    SIP Digest Public-Key Authentication          May 2026
 
 
+   Compromise of a provisioned private key enables impersonation for the
+   identities and realms authorized for the corresponding public key.
+   Deployments need operational procedures for protecting, rotating, and
+   revoking keys according to local policy.
+
+   Schnorr nonces MUST be generated with high-quality randomness or by a
+   deterministic nonce generation construction with equivalent security.
+   Reusing a Schnorr nonce with the same private scalar can reveal the
+   private scalar.
+
    Implementations MUST use constant-time comparison when checking MAC
    or hash responses and SHOULD use constant-time scalar and group
    operations where provided by the cryptographic library.
-
-   The MD5 algorithm MUST NOT be used with this mechanism.
 
 17.  Normative References
 
@@ -1160,14 +1168,6 @@ Internet-Draft    SIP Digest Public-Key Authentication          May 2026
               DOI 10.17487/RFC5869, May 2010,
               <https://www.rfc-editor.org/info/rfc5869>.
 
-   [RFC6234]  Eastlake 3rd, D. and T. Hansen, "US Secure Hash Algorithms
-              (SHA and SHA-based HMAC and HKDF)", RFC 6234,
-              DOI 10.17487/RFC6234, May 2011,
-              <https://www.rfc-editor.org/info/rfc6234>.
-
-   [RFC7748]  Langley, A., Hamburg, M., and S. Turner, "Elliptic Curves
-              for Security", RFC 7748, DOI 10.17487/RFC7748, January
-              2016, <https://www.rfc-editor.org/info/rfc7748>.
 
 
 
@@ -1177,6 +1177,15 @@ Sobolyev                Expires 30 November 2026               [Page 21]
 
 Internet-Draft    SIP Digest Public-Key Authentication          May 2026
 
+
+   [RFC6234]  Eastlake 3rd, D. and T. Hansen, "US Secure Hash Algorithms
+              (SHA and SHA-based HMAC and HKDF)", RFC 6234,
+              DOI 10.17487/RFC6234, May 2011,
+              <https://www.rfc-editor.org/info/rfc6234>.
+
+   [RFC7748]  Langley, A., Hamburg, M., and S. Turner, "Elliptic Curves
+              for Security", RFC 7748, DOI 10.17487/RFC7748, January
+              2016, <https://www.rfc-editor.org/info/rfc7748>.
 
    [RFC8174]  Leiba, B., "Ambiguity of Uppercase vs Lowercase in RFC
               2119 Key Words", BCP 14, RFC 8174, DOI 10.17487/RFC8174,
@@ -1197,15 +1206,6 @@ Author's Address
    Maksym Sobolyev
    Sippy Software, Inc.
    Email: sobomax@sippysoft.com
-
-
-
-
-
-
-
-
-
 
 
 
