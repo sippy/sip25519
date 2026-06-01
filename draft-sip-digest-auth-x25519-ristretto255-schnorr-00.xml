@@ -13,6 +13,13 @@
     <author fullname="Maksym Sobolyev" initials="M." surname="Sobolyev">
       <organization>Sippy Software, Inc.</organization>
       <address>
+        <postal>
+          <street>8100 Winston Street</street>
+          <city>Burnaby</city>
+          <region>BC</region>
+          <code>V5A 2H5</code>
+          <country>Canada</country>
+        </postal>
         <email>sobomax@sippysoft.com</email>
       </address>
     </author>
