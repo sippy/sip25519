@@ -4,12 +4,12 @@
      version="3"
      category="std"
      consensus="true"
-     docName="draft-sobolyev-sip-digest-auth-x25519-ristretto255-schnorr-00"
+     docName="draft-sip-digest-auth-x25519-ristretto255-schnorr-00"
      ipr="trust200902"
      submissionType="IETF">
   <front>
     <title abbrev="SIP Digest Public-Key Authentication">SIP Digest Authentication with X25519 Shared Secrets and Ristretto255 Schnorr Proofs</title>
-    <seriesInfo name="Internet-Draft" value="draft-sobolyev-sip-digest-auth-x25519-ristretto255-schnorr-00"/>
+    <seriesInfo name="Internet-Draft" value="draft-sip-digest-auth-x25519-ristretto255-schnorr-00"/>
     <author fullname="Maksym Sobolyev" initials="M." surname="Sobolyev">
       <organization>Sippy Software, Inc.</organization>
       <address>
