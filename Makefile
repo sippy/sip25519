@@ -1,7 +1,7 @@
 PYTHON ?= python3
 XML2RFC ?= $(HOME)/.local/bin/xml2rfc
 
-XML = draft-sobolyev-sip-digest-auth-x25519-ristretto255-schnorr-00.xml
+XML = draft-sip-digest-auth-x25519-ristretto255-schnorr-00.xml
 TXT = RFC/draft-sip-digest-auth-X25519-Ristretto255-Schnorr.txt
 README = README.md
 README_PRE = README.md.pre
