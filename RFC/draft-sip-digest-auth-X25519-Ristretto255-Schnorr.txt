@@ -10,7 +10,7 @@ Expires: 30 November 2026
 
  SIP Digest Authentication with X25519 Shared Secrets and Ristretto255
                              Schnorr Proofs
-     draft-sobolyev-sip-digest-auth-x25519-ristretto255-schnorr-00
+          draft-sip-digest-auth-x25519-ristretto255-schnorr-00
 
 Abstract
 

@@ -4,7 +4,7 @@
 
 # SIP Digest Authentication with X25519 Shared Secrets and Ristretto255 Schnorr Proofs
 
-*Internet-Draft: `draft-sobolyev-sip-digest-auth-x25519-ristretto255-schnorr-00`*
+*Internet-Draft: `draft-sip-digest-auth-x25519-ristretto255-schnorr-00`*
 
 ## Abstract
 
